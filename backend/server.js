@@ -170,3 +170,132 @@ app.get("/getNote/:noteId", express.json(), async (req, res) => {
       res.status(500).json({ error: error.message });
     }
   });
+
+  // GET all notes belonging to the authenticated user
+app.get("/getAllNotes", express.json(), async (req, res) => {
+  try {
+      const token = req.headers.authorization?.split(" ")[1];
+      if (!token) {
+          return res.status(401).send("Unauthorized.");
+      }
+
+      jwt.verify(token, "secret-key", async (err, decoded) => {
+          if (err) {
+              return res.status(401).send("Unauthorized.");
+          }
+
+          const collection = db.collection(COLLECTIONS.notes);
+          const notes = await collection.find({ username: decoded.username }).toArray();
+
+          res.status(200).json({
+              response: notes.map(note => ({
+                  _id: note._id,
+                  title: note.title,
+                  content: note.content,
+                  username: note.username
+              }))
+          });
+      });
+  } catch (error) {
+      res.status(500).json({ error: error.message });
+  }
+});
+
+
+// DELETE a note belonging to the authenticated user
+app.delete("/deleteNote/:noteId", express.json(), async (req, res) => {
+  try {
+      const token = req.headers.authorization?.split(" ")[1];
+      if (!token) {
+          return res.status(401).send("Unauthorized.");
+      }
+
+      jwt.verify(token, "secret-key", async (err, decoded) => {
+          if (err) {
+              return res.status(401).send("Unauthorized.");
+          }
+
+          // Validate noteId
+          const noteId = req.params.noteId;
+          if (!ObjectId.isValid(noteId)) {
+              return res.status(400).json({ error: "Invalid note ID." });
+          }
+
+          // Attempt to delete the note
+          const collection = db.collection(COLLECTIONS.notes);
+          const result = await collection.deleteOne({
+              _id: new ObjectId(noteId),
+              username: decoded.username,
+          });
+
+          // Check if the note was actually found and deleted
+          if (result.deletedCount === 0) {
+              return res.status(404).json({ error: "Unable to find note with given ID." });
+          }
+
+          // Successful deletion
+          res.status(200).json({
+              response: `Document with ID ${noteId} properly deleted.`
+          });
+      });
+  } catch (error) {
+      res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+// PATCH a note belonging to the authenticated user
+app.patch("/editNote/:noteId", express.json(), async (req, res) => {
+  try {
+      const token = req.headers.authorization?.split(" ")[1];
+      if (!token) {
+          return res.status(401).send("Unauthorized.");
+      }
+
+      jwt.verify(token, "secret-key", async (err, decoded) => {
+          if (err) {
+              return res.status(401).send("Unauthorized.");
+          }
+
+          // Validate noteId
+          const noteId = req.params.noteId;
+          if (!ObjectId.isValid(noteId)) {
+              return res.status(400).json({ error: "Invalid note ID." });
+          }
+
+          // Validate request body
+          const { title, content } = req.body;
+          if (!title && !content) {
+              return res.status(400).json({ error: "At least one of title or content need to be updated" });
+          }
+
+          // Construct update object
+          const updateData = {};
+          if (title) updateData.title = title;
+          if (content) updateData.content = content;
+
+          // Attempt to update the note
+          const collection = db.collection(COLLECTIONS.notes);
+          const result = await collection.updateOne(
+              {
+                  _id: new ObjectId(noteId),
+                  username: decoded.username,
+              },
+              { $set: updateData }
+          );
+
+          // Check if the note was actually found and updated
+          if (result.matchedCount === 0) {
+              return res.status(404).json({ error: "Unable to find the note with given ID." });
+          }
+
+          // Successful update
+          res.status(200).json({
+              response: `Document with ID ${noteId} properly updated.`
+          });
+      });
+  } catch (error) {
+      res.status(500).json({ error: error.message });
+  }
+});
